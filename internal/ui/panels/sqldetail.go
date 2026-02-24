@@ -14,9 +14,10 @@ import (
 // SQLDetailPanel shows the execution plan and runtime statistics for a SQL ID.
 // It is driven by SessionContext and SQLContext events from the bus.
 type SQLDetailPanel struct {
-	app  *tview.Application
-	db   *db.DB
-	text *tview.TextView
+	app      *tview.Application
+	db       *db.DB
+	text     *tview.TextView
+	statusFn func(error)
 }
 
 func newSQLDetailPanel(app *tview.Application, database *db.DB) panel.Panel {
@@ -35,22 +36,33 @@ func (p *SQLDetailPanel) Subscriptions() []string    { return []string{"SessionC
 func (p *SQLDetailPanel) Refresh()                   {}
 func (p *SQLDetailPanel) Mount()                     {}
 func (p *SQLDetailPanel) Unmount()                   {}
+func (p *SQLDetailPanel) SetStatusFn(fn func(error)) { p.statusFn = fn }
 
 // OnContext is called on the tview main goroutine; it spawns a goroutine for DB I/O.
 func (p *SQLDetailPanel) OnContext(ctx uictx.Context) {
 	switch c := ctx.(type) {
 	case uictx.SQLContext:
+		p.text.SetText("[gray]Loading…[-]")
 		go p.fetchAndRender(c.SQLID, c.SQLText)
 	case uictx.SessionContext:
 		if c.Session.SQLID != "" {
+			p.text.SetText("[gray]Loading…[-]")
 			go p.fetchAndRender(c.Session.SQLID, c.Session.SQLText)
 		}
 	}
 }
 
 func (p *SQLDetailPanel) fetchAndRender(sqlID, sqlText string) {
-	plan, _ := p.db.GetExecutionPlan(sqlID)
-	stats, _ := p.db.GetSQLStats(sqlID)
+	plan, err := p.db.GetExecutionPlan(sqlID)
+	if err != nil && p.statusFn != nil {
+		p.statusFn(err)
+	}
+
+	stats, err := p.db.GetSQLStats(sqlID)
+	if err != nil && p.statusFn != nil {
+		p.statusFn(err)
+	}
+
 	p.app.QueueUpdateDraw(func() {
 		p.render(sqlID, sqlText, plan, stats)
 	})

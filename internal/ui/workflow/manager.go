@@ -3,6 +3,7 @@ package workflow
 import (
 	"fmt"
 
+	"github.com/mdoeren/otop/internal/ui/statusbar"
 	"github.com/rivo/tview"
 )
 
@@ -14,25 +15,29 @@ type Manager struct {
 	tabBar    *tview.TextView
 	pages     *tview.Pages
 	root      *tview.Flex
+	statusBar *statusbar.StatusBar
 }
 
 // NewManager creates a Manager with an empty tab bar and no workflows.
 func NewManager(app *tview.Application) *Manager {
 	m := &Manager{
-		app:    app,
-		active: -1,
-		tabBar: tview.NewTextView().SetDynamicColors(true),
-		pages:  tview.NewPages(),
+		app:       app,
+		active:    -1,
+		tabBar:    tview.NewTextView().SetDynamicColors(true),
+		pages:     tview.NewPages(),
+		statusBar: statusbar.New(app),
 	}
 	m.root = tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(m.tabBar, 1, 0, false).
-		AddItem(m.pages, 0, 1, true)
+		AddItem(m.pages, 0, 1, true).
+		AddItem(m.statusBar.Primitive(), 1, 0, false)
 	return m
 }
 
 // AddWorkflow registers w and activates it if it is the first workflow.
 func (m *Manager) AddWorkflow(w *Workflow) {
+	w.SetStatusBar(m.statusBar)
 	w.SetPages(m.pages)
 	m.workflows = append(m.workflows, w)
 	m.renderTabBar()

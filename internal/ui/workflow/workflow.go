@@ -7,6 +7,7 @@ import (
 	uictx "github.com/mdoeren/otop/internal/ui/context"
 	"github.com/mdoeren/otop/internal/ui/layout"
 	"github.com/mdoeren/otop/internal/ui/panel"
+	"github.com/mdoeren/otop/internal/ui/statusbar"
 	"github.com/rivo/tview"
 )
 
@@ -27,6 +28,8 @@ type Workflow struct {
 	active          bool
 	pages           *tview.Pages
 	pageKey         string
+	statusBar       *statusbar.StatusBar
+	statusFn        func(error)
 }
 
 // New creates a Workflow with the given name and refresh interval.
@@ -40,6 +43,16 @@ func New(name string, app *tview.Application, database *db.DB, refreshInterval t
 		unsubs:          make(map[panel.Panel][]func()),
 		refreshInterval: refreshInterval,
 		pageKey:         name,
+	}
+}
+
+// SetStatusBar wires the status bar so panels can surface DB errors.
+func (w *Workflow) SetStatusBar(sb *statusbar.StatusBar) {
+	w.statusBar = sb
+	w.statusFn = func(err error) {
+		if err != nil {
+			sb.Error(err.Error())
+		}
 	}
 }
 
@@ -73,6 +86,11 @@ func (w *Workflow) AddPanel(p panel.Panel, splitTarget tview.Primitive, dir layo
 	// Wire emit function if the panel can emit
 	if e, ok := p.(panel.Emitter); ok {
 		e.SetEmitFn(w.bus.Emit)
+	}
+
+	// Wire status function if the panel can report errors
+	if r, ok := p.(panel.Reporter); ok && w.statusFn != nil {
+		r.SetStatusFn(w.statusFn)
 	}
 
 	w.panels = append(w.panels, p)
@@ -189,6 +207,9 @@ func (w *Workflow) Start() {
 				w.app.QueueUpdateDraw(func() {
 					for _, p := range w.panels {
 						p.Refresh()
+					}
+					if w.statusBar != nil {
+						w.statusBar.Info("Refreshed %s", time.Now().Format("15:04:05"))
 					}
 				})
 			case <-w.stopCh:

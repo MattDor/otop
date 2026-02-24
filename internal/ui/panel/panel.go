@@ -37,5 +37,11 @@ type Emitter interface {
 	SetEmitFn(fn func(uictx.Context))
 }
 
+// Reporter is an optional interface. If a Panel also implements Reporter, the
+// workflow wires up a status function so the panel can surface DB errors.
+type Reporter interface {
+	SetStatusFn(fn func(error))
+}
+
 // Factory creates a new Panel instance.
 type Factory func(app *tview.Application, db *db.DB) Panel

@@ -18,6 +18,7 @@ type SessionListPanel struct {
 	db       *db.DB
 	table    *tview.Table
 	emitFn   func(uictx.Context)
+	statusFn func(error)
 	sessions []models.Session
 }
 
@@ -46,25 +47,39 @@ func newSessionListPanel(app *tview.Application, database *db.DB) panel.Panel {
 	return p
 }
 
-func (p *SessionListPanel) Name() string                    { return "SessionList" }
-func (p *SessionListPanel) Primitive() tview.Primitive      { return p.table }
-func (p *SessionListPanel) Subscriptions() []string         { return nil }
-func (p *SessionListPanel) OnContext(_ uictx.Context)       {}
-func (p *SessionListPanel) SetEmitFn(fn func(uictx.Context)) { p.emitFn = fn }
+func (p *SessionListPanel) Name() string                      { return "SessionList" }
+func (p *SessionListPanel) Primitive() tview.Primitive        { return p.table }
+func (p *SessionListPanel) Subscriptions() []string           { return nil }
+func (p *SessionListPanel) OnContext(_ uictx.Context)         {}
+func (p *SessionListPanel) SetEmitFn(fn func(uictx.Context))  { p.emitFn = fn }
+func (p *SessionListPanel) SetStatusFn(fn func(error))        { p.statusFn = fn }
 
-func (p *SessionListPanel) Mount()   { p.loadSessions() }
+func (p *SessionListPanel) Mount() {
+	p.table.SetCell(0, 0, tview.NewTableCell("[gray]Loading…[-]").SetSelectable(false))
+	go p.loadSessions()
+}
+
 func (p *SessionListPanel) Unmount() {}
 
 func (p *SessionListPanel) Refresh() {
-	p.loadSessions()
+	go p.loadSessions()
 }
 
 func (p *SessionListPanel) loadSessions() {
 	sessions, err := p.db.GetActiveSessions()
 	if err != nil {
+		if p.statusFn != nil {
+			p.statusFn(err)
+		}
 		return
 	}
-	p.sessions = sessions
+	p.app.QueueUpdateDraw(func() {
+		p.sessions = sessions
+		p.renderTable()
+	})
+}
+
+func (p *SessionListPanel) renderTable() {
 	p.table.Clear()
 
 	headers := []string{"SID", "Username", "Status", "SQL ID", "Wait Event", "SQL Text"}
@@ -76,7 +91,7 @@ func (p *SessionListPanel) loadSessions() {
 				SetExpansion(1))
 	}
 
-	for i, s := range sessions {
+	for i, s := range p.sessions {
 		row := i + 1
 		sqlText := s.SQLText
 		if len(sqlText) > 50 {
