@@ -41,15 +41,14 @@ func NewApp(database *db.DB) *App {
 	manager.AddWorkflow(w)
 
 	// Seed with a SessionList panel and a detail panel below it.
+	var sessionPanel panel.Panel
 	if entry, ok := panel.Global.Get("SessionList"); ok {
-		sessionPanel := entry.Factory(tapp, database)
+		sessionPanel = entry.Factory(tapp, database)
 		w.AddPanel(sessionPanel, nil, layout.Horizontal)
 
 		if detail, ok := panel.Global.Get("SQLDetail"); ok {
 			w.AddPanel(detail.Factory(tapp, database), sessionPanel.Primitive(), layout.Vertical)
 		}
-		// AddPanel focuses the newest panel; start on the session list.
-		w.Focus(sessionPanel)
 	}
 
 	// Register the workflow manager as the main page.
@@ -132,6 +131,12 @@ func NewApp(database *db.DB) *App {
 	})
 
 	tapp.SetRoot(rootPages, true)
+
+	// SetRoot moves focus to the root container, which would leave keyboard
+	// input on a layout Flex instead of a panel. Focus the session list last.
+	if sessionPanel != nil {
+		w.Focus(sessionPanel)
+	}
 	return &App{tview: tapp}
 }
 

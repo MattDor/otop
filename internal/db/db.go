@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/mdoeren/otop/internal/models"
@@ -26,6 +27,16 @@ func Connect(connStr string) (*DB, error) {
 	return &DB{conn: conn}, nil
 }
 
+// ErrNotConnected is returned by query methods on a nil or unopened DB.
+var ErrNotConnected = errors.New("not connected to a database")
+
+func (db *DB) ready() error {
+	if db == nil || db.conn == nil {
+		return ErrNotConnected
+	}
+	return nil
+}
+
 // Close closes the underlying database connection.
 func (db *DB) Close() error {
 	return db.conn.Close()
@@ -34,6 +45,9 @@ func (db *DB) Close() error {
 // GetActiveSessions returns all user sessions joined with their current SQL
 // text and wait event. Active sessions sort first.
 func (db *DB) GetActiveSessions() ([]models.Session, error) {
+	if err := db.ready(); err != nil {
+		return nil, err
+	}
 	const query = `
 SELECT
     s.SID,
@@ -87,6 +101,9 @@ ORDER BY
 // GetExecutionPlan returns the execution plan rows for the given SQL ID,
 // using the lowest child cursor number to get a consistent plan.
 func (db *DB) GetExecutionPlan(sqlID string) ([]models.PlanRow, error) {
+	if err := db.ready(); err != nil {
+		return nil, err
+	}
 	const query = `
 SELECT
     ID,
@@ -131,6 +148,9 @@ ORDER BY ID`
 // GetSQLStats returns aggregated runtime statistics for the given SQL ID,
 // summing across all child cursors.
 func (db *DB) GetSQLStats(sqlID string) (*models.SQLStats, error) {
+	if err := db.ready(); err != nil {
+		return nil, err
+	}
 	const query = `
 SELECT
     SQL_ID,
