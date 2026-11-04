@@ -21,7 +21,9 @@ type Panel interface {
 	// Must not block; spawn a goroutine for I/O and use QueueUpdateDraw.
 	OnContext(ctx uictx.Context)
 
-	// Refresh is called periodically inside QueueUpdateDraw.
+	// Refresh is called periodically on the tview main goroutine. Must not
+	// block and must not call QueueUpdate/QueueUpdateDraw directly (they wait
+	// for the main loop and would deadlock); spawn a goroutine instead.
 	Refresh()
 
 	// Mount is called once after the panel is added to a workflow.

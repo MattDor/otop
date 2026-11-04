@@ -28,7 +28,11 @@ func startApp(t *testing.T, root tview.Primitive) (*tview.Application, tcell.Sim
 	}()
 	t.Cleanup(func() {
 		app.Stop()
-		<-done
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Error("app did not shut down (main loop blocked?)")
+		}
 	})
 	return app, screen
 }

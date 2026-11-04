@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
+
 	uictx "github.com/mdoeren/otop/internal/ui/context"
 	"github.com/mdoeren/otop/internal/ui/layout"
 	"github.com/mdoeren/otop/internal/ui/panel"
@@ -192,5 +194,64 @@ func TestManager_SwitchWorkflows(t *testing.T) {
 	m.SwitchTo(7) // out of range: ignored
 	if m.ActiveWorkflow() != w2 || m.Count() != 2 {
 		t.Error("SwitchTo(out of range) changed state")
+	}
+}
+
+// TestRefreshTicker_KeepsUIResponsive is a regression test for a deadlock:
+// the ticker's update ran on the main goroutine and called the status bar,
+// which used QueueUpdateDraw synchronously and froze the UI on first tick.
+func TestRefreshTicker_KeepsUIResponsive(t *testing.T) {
+	screen := tcell.NewSimulationScreen("UTF-8")
+	if err := screen.Init(); err != nil {
+		t.Fatal(err)
+	}
+	app := tview.NewApplication().SetScreen(screen)
+	m := NewManager(app)
+	w := New("Fast", app, nil, 10*time.Millisecond)
+	refreshed := make(chan struct{}, 100)
+	p := &refreshPanel{fakePanel: newFake("R"), refreshed: refreshed}
+	m.AddWorkflow(w)
+	w.AddPanel(p, nil, layout.Horizontal)
+	app.SetRoot(m.RootPrimitive(), true)
+
+	done := make(chan struct{})
+	go func() { defer close(done); _ = app.Run() }()
+	t.Cleanup(func() {
+		w.Stop()
+		app.Stop()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Error("app did not shut down (main loop blocked?)")
+		}
+	})
+
+	for i := 0; i < 5; i++ {
+		select {
+		case <-refreshed:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("only %d refresh ticks arrived; main loop blocked?", i)
+		}
+	}
+
+	// Main loop must still process updates and key events.
+	ok := make(chan struct{})
+	go app.QueueUpdate(func() { close(ok) })
+	select {
+	case <-ok:
+	case <-time.After(2 * time.Second):
+		t.Fatal("main loop is blocked after refresh ticks (deadlock)")
+	}
+}
+
+type refreshPanel struct {
+	*fakePanel
+	refreshed chan struct{}
+}
+
+func (r *refreshPanel) Refresh() {
+	select {
+	case r.refreshed <- struct{}{}:
+	default:
 	}
 }
