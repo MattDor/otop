@@ -54,6 +54,12 @@ func (w *Workflow) SetStatusBar(sb *statusbar.StatusBar) {
 			sb.Error(err.Error())
 		}
 	}
+	// Panels added before the status bar was set get wired now.
+	for _, p := range w.panels {
+		if r, ok := p.(panel.Reporter); ok {
+			r.SetStatusFn(w.statusFn)
+		}
+	}
 }
 
 // AddPanel adds p to the workflow layout.
@@ -98,6 +104,11 @@ func (w *Workflow) AddPanel(p panel.Panel, splitTarget tview.Primitive, dir layo
 	w.rebuild()
 
 	// Focus the newly added panel
+	w.Focus(p)
+}
+
+// Focus gives keyboard focus to p and syncs the Tab-cycle position.
+func (w *Workflow) Focus(p panel.Panel) {
 	w.app.SetFocus(p.Primitive())
 	for i, prim := range w.focusOrder {
 		if prim == p.Primitive() {
@@ -197,7 +208,10 @@ func (w *Workflow) Start() {
 		return
 	}
 	w.active = true
-	w.stopCh = make(chan struct{})
+	// Capture the channel locally: Stop() nils the field, and the goroutine
+	// must keep selecting on the channel that Stop() closed.
+	stop := make(chan struct{})
+	w.stopCh = stop
 	ticker := time.NewTicker(w.refreshInterval)
 	go func() {
 		defer ticker.Stop()
@@ -212,7 +226,7 @@ func (w *Workflow) Start() {
 						w.statusBar.Info("Refreshed %s", time.Now().Format("15:04:05"))
 					}
 				})
-			case <-w.stopCh:
+			case <-stop:
 				return
 			}
 		}

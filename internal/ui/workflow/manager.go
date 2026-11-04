@@ -112,5 +112,6 @@ func (m *Manager) renderTabBar() {
 			text += fmt.Sprintf("[::d] %s [-:-:-]  ", w.Name)
 		}
 	}
+	text += "[gray]│ ↑↓: select session  Tab: next panel  Ctrl+P: open panel  Ctrl+W: close panel  q: quit[-]"
 	m.tabBar.SetText(text)
 }

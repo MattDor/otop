@@ -36,13 +36,21 @@ func NewApp(database *db.DB) *App {
 	// Create the default "Sessions" workflow.
 	w := workflow.New("Sessions", tapp, database, refreshInterval)
 
-	// Seed with a SessionList panel.
+	// Register the workflow first so the status bar is wired before panels
+	// are added (panels pick up the status function in AddPanel).
+	manager.AddWorkflow(w)
+
+	// Seed with a SessionList panel and a detail panel below it.
 	if entry, ok := panel.Global.Get("SessionList"); ok {
 		sessionPanel := entry.Factory(tapp, database)
 		w.AddPanel(sessionPanel, nil, layout.Horizontal)
-	}
 
-	manager.AddWorkflow(w)
+		if detail, ok := panel.Global.Get("SQLDetail"); ok {
+			w.AddPanel(detail.Factory(tapp, database), sessionPanel.Primitive(), layout.Vertical)
+		}
+		// AddPanel focuses the newest panel; start on the session list.
+		w.Focus(sessionPanel)
+	}
 
 	// Register the workflow manager as the main page.
 	rootPages.AddPage("main", manager.RootPrimitive(), true, true)
@@ -54,6 +62,11 @@ func NewApp(database *db.DB) *App {
 	// Global keybindings.
 	tapp.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch {
+		case event.Key() == tcell.KeyCtrlQ,
+			event.Key() == tcell.KeyRune && event.Rune() == 'q' && !isTextInput(tapp.GetFocus()):
+			tapp.Stop()
+			return nil
+
 		case event.Key() == tcell.KeyCtrlP:
 			pal.Show()
 			return nil
@@ -120,6 +133,16 @@ func NewApp(database *db.DB) *App {
 
 	tapp.SetRoot(rootPages, true)
 	return &App{tview: tapp}
+}
+
+// isTextInput reports whether p is a widget that consumes typed characters,
+// in which case single-letter shortcuts must not be intercepted.
+func isTextInput(p tview.Primitive) bool {
+	switch p.(type) {
+	case *tview.TextArea, *tview.InputField:
+		return true
+	}
+	return false
 }
 
 // Run starts the TUI event loop.
